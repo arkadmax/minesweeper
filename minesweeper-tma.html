@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Сапер</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --bg-secondary: #16213e;
+            --accent: #e94560;
+            --btn-bg: #0f3460;
+            --cell-hidden: #3a3a4a;
+            --cell-hidden-border: #4a4a5a;
+            --cell-revealed: #2a2a3a;
+            --text-color: #ffffff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 15px;
+            color: var(--text-color);
+            touch-action: manipulation;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        button {
+            padding: 10px 16px;
+            font-size: 14px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: var(--btn-bg);
+            color: var(--text-color);
+            flex: 1;
+            min-width: 100px;
+        }
+
+        button:hover {
+            background: var(--accent);
+        }
+
+        button.active {
+            background: var(--accent);
+        }
+
+        .game-info {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+
+        .game-info span {
+            background: var(--btn-bg);
+            padding: 8px 12px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        #game-board {
+            display: grid;
+            gap: 2px;
+            background: #222;
+            padding: 4px;
+            border-radius: 8px;
+            touch-action: none;
+        }
+
+        .cell {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.1s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        @media (max-width: 400px) {
+            .cell {
+                width: 28px;
+                height: 28px;
+                font-size: 12px;
+            }
+        }
+
+        .cell.hidden {
+            background: linear-gradient(145deg, var(--cell-hidden), var(--cell-hidden-border));
+            border: 1px solid #555;
+        }
+
+        .cell.hidden:active {
+            transform: scale(0.95);
+        }
+
+        .cell.revealed {
+            background: var(--cell-revealed);
+        }
+
+        .cell.flagged::after {
+            content: '🚩';
+            font-size: 14px;
+        }
+
+        .cell.mine {
+            background: var(--accent);
+        }
+
+        .cell.mine::after {
+            content: '💣';
+            font-size: 16px;
+        }
+
+        .cell.exploded {
+            background: #ff0000;
+        }
+
+        /* Цвета для цифр */
+        .cell[data-num="1"] { color: #4fc3f7; }
+        .cell[data-num="2"] { color: #81c784; }
+        .cell[data-num="3"] { color: #e57373; }
+        .cell[data-num="4"] { color: #9575cd; }
+        .cell[data-num="5"] { color: #ffb74d; }
+        .cell[data-num="6"] { color: #4db6ac; }
+        .cell[data-num="7"] { color: #f06292; }
+        .cell[data-num="8"] { color: #fff; }
+
+        #message {
+            margin-top: 15px;
+            font-size: 20px;
+            font-weight: bold;
+            min-height: 30px;
+            text-align: center;
+        }
+
+        #message.win {
+            color: #4caf50;
+        }
+
+        #message.lose {
+            color: var(--accent);
+        }
+
+        .btn-restart {
+            margin-top: 15px;
+            padding: 12px 24px;
+            font-size: 16px;
+            background: var(--accent);
+            display: none;
+        }
+
+        .btn-restart.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>💣 Сапер</h1>
+    
+    <div class="controls">
+        <button onclick="startGame('easy')" id="btn-easy">Новичок</button>
+        <button onclick="startGame('medium')" id="btn-medium">Любитель</button>
+        <button onclick="startGame('hard')" id="btn-hard">Профи</button>
+    </div>
+
+    <div class="game-info">
+        <span>💣 <span id="mines-left">0</span></span>
+        <span>⏱️ <span id="timer">0</span></span>
+    </div>
+
+    <div id="game-board"></div>
+
+    <div id="message"></div>
+    <button class="btn-restart" onclick="restartGame()">🔄 Играть снова</button>
+
+    <script>
+        // Инициализация Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        // Настройка цветов под тему Telegram
+        const themeParams = tg.themeParams;
+        if (themeParams) {
+            document.documentElement.style.setProperty('--bg-color', themeParams.bg_color || '#1a1a2e');
+            document.documentElement.style.setProperty('--bg-secondary', themeParams.bg_color || '#16213e');
+            document.documentElement.style.setProperty('--accent', themeParams.button_color || '#e94560');
+            document.documentElement.style.setProperty('--btn-bg', themeParams.button_color || '#0f3460');
+            document.documentElement.style.setProperty('--text-color', themeParams.text_color || '#ffffff');
+        }
+
+        const levels = {
+            easy: { rows: 9, cols: 9, mines: 10 },
+            medium: { rows: 16, cols: 16, mines: 40 },
+            hard: { rows: 16, cols: 30, mines: 99 }
+        };
+
+        let board = [];
+        let revealed = [];
+        let flagged = [];
+        let gameOver = true;
+        let firstClick = true;
+        let timerInterval = null;
+        let time = 0;
+        let currentLevel = null;
+
+        function startGame(level) {
+            currentLevel = level;
+            const config = levels[level];
+            
+            document.querySelectorAll('.controls button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${level}`).classList.add('active');
+            
+            board = [];
+            revealed = Array(config.rows).fill(null).map(() => Array(config.cols).fill(false));
+            flagged = Array(config.rows).fill(null).map(() => Array(config.cols).fill(false));
+            gameOver = true;
+            firstClick = true;
+            time = 0;
+            
+            clearInterval(timerInterval);
+            document.getElementById('timer').textContent = '0';
+            document.getElementById('mines-left').textContent = config.mines;
+            document.getElementById('message').textContent = '';
+            document.getElementById('message').className = '';
+            document.querySelector('.btn-restart').classList.remove('show');
+            
+            createBoard(config.rows, config.cols);
+            
+            gameOver = false;
+        }
+
+        function restartGame() {
+            if (currentLevel) {
+                startGame(currentLevel);
+            } else {
+                startGame('easy');
+            }
+        }
+
+        function createBoard(rows, cols) {
+            const gameBoard = document.getElementById('game-board');
+            gameBoard.innerHTML = '';
+            
+            const cellSize = window.innerWidth <= 400 ? 28 : 32;
+            const gap = 2;
+            const boardWidth = cols * (cellSize + gap) - gap + 8;
+            
+            gameBoard.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+            gameBoard.style.maxWidth = `${boardWidth}px`;
+            
+            for (let i = 0; i < rows; i++) {
+                board[i] = [];
+                for (let j = 0; j < cols; j++) {
+                    board[i][j] = 0;
+                    
+                    const cell = document.createElement('div');
+                    cell.className = 'cell hidden';
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    
+                    cell.addEventListener('click', () => handleClick(i, j));
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        handleRightClick(i, j);
+                    });
+                    
+                    // Долгое нажатие для флага (мобильная альтернатива ПКМ)
+                    let pressTimer;
+                    cell.addEventListener('touchstart', (e) => {
+                        pressTimer = setTimeout(() => {
+                            e.preventDefault();
+                            handleRightClick(i, j);
+                        }, 500);
+                    });
+                    cell.addEventListener('touchend', () => {
+                        clearTimeout(pressTimer);
+                    });
+                    cell.addEventListener('touchmove', () => {
+                        clearTimeout(pressTimer);
+                    });
+                    
+                    gameBoard.appendChild(cell);
+                }
+            }
+        }
+
+        function placeMines(excludeRow, excludeCol) {
+            const config = levels[currentLevel];
+            let minesPlaced = 0;
+            let attempts = 0;
+            const maxAttempts = config.mines * 10;
+            
+            while (minesPlaced < config.mines && attempts < maxAttempts) {
+                attempts++;
+                const row = Math.floor(Math.random() * config.rows);
+                const col = Math.floor(Math.random() * config.cols);
+                
+                const isExcluded = Math.abs(row - excludeRow) <= 1 && Math.abs(col - excludeCol) <= 1;
+                
+                if (board[row][col] !== -1 && !isExcluded) {
+                    board[row][col] = -1;
+                    minesPlaced++;
+                }
+            }
+            
+            for (let i = 0; i < config.rows; i++) {
+                for (let j = 0; j < config.cols; j++) {
+                    if (board[i][j] !== -1) {
+                        board[i][j] = countMines(i, j);
+                    }
+                }
+            }
+        }
+
+        function countMines(row, col) {
+            const config = levels[currentLevel];
+            let count = 0;
+            
+            for (let di = -1; di <= 1; di++) {
+                for (let dj = -1; dj <= 1; dj++) {
+                    if (di === 0 && dj === 0) continue;
+                    const ni = row + di;
+                    const nj = col + dj;
+                    if (ni >= 0 && ni < config.rows && nj >= 0 && nj < config.cols && board[ni][nj] === -1) {
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        function handleClick(row, col) {
+            if (gameOver || revealed[row][col] || flagged[row][col]) return;
+            
+            if (firstClick) {
+                firstClick = false;
+                placeMines(row, col);
+                startTimer();
+            }
+            
+            if (board[row][col] === -1) {
+                revealAllMines(row, col);
+                endGame(false);
+                return;
+            }
+            
+            revealCell(row, col);
+            checkWin();
+        }
+
+        function handleRightClick(row, col) {
+            if (gameOver || revealed[row][col]) return;
+            
+            flagged[row][col] = !flagged[row][col];
+            
+            const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+            cell.classList.toggle('flagged');
+            
+            updateMinesLeft();
+        }
+
+        function revealCell(row, col) {
+            const config = levels[currentLevel];
+            
+            if (row < 0 || row >= config.rows || col < 0 || col >= config.cols) return;
+            if (revealed[row][col] || flagged[row][col]) return;
+            
+            revealed[row][col] = true;
+            
+            const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+            cell.classList.remove('hidden');
+            cell.classList.add('revealed');
+            
+            const value = board[row][col];
+            if (value > 0) {
+                cell.textContent = value;
+                cell.dataset.num = value;
+            } else {
+                for (let di = -1; di <= 1; di++) {
+                    for (let dj = -1; dj <= 1; dj++) {
+                        if (di !== 0 || dj !== 0) {
+                            revealCell(row + di, col + dj);
+                        }
+                    }
+                }
+            }
+        }
+
+        function revealAllMines(explodedRow, explodedCol) {
+            const config = levels[currentLevel];
+            
+            for (let i = 0; i < config.rows; i++) {
+                for (let j = 0; j < config.cols; j++) {
+                    const cell = document.querySelector(`.cell[data-row="${i}"][data-col="${j}"]`);
+                    
+                    if (board[i][j] === -1) {
+                        if (i === explodedRow && j === explodedCol) {
+                            cell.classList.add('exploded');
+                        } else {
+                            cell.classList.add('mine');
+                        }
+                    }
+                }
+            }
+        }
+
+        function updateMinesLeft() {
+            const config = levels[currentLevel];
+            const flagsUsed = flagged.flat().filter(f => f).length;
+            document.getElementById('mines-left').textContent = config.mines - flagsUsed;
+        }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                time++;
+                document.getElementById('timer').textContent = time;
+            }, 1000);
+        }
+
+        function checkWin() {
+            const config = levels[currentLevel];
+            const totalCells = config.rows * config.cols;
+            const revealedCount = revealed.flat().filter(r => r).length;
+            
+            if (revealedCount === totalCells - config.mines) {
+                endGame(true);
+            }
+        }
+
+        function endGame(won) {
+            gameOver = true;
+            clearInterval(timerInterval);
+            
+            const message = document.getElementById('message');
+            if (won) {
+                message.textContent = '🎉 Поздравляем! Вы победили!';
+                message.className = 'win';
+                tg.HapticFeedback.notificationOccurred('success');
+            } else {
+                message.textContent = '💥 БУМ! Вы проиграли!';
+                message.className = 'lose';
+                tg.HapticFeedback.notificationOccurred('error');
+            }
+            
+            document.querySelector('.btn-restart').classList.add('show');
+            
+            // Отправляем событие в бота (опционально)
+            tg.sendData(JSON.stringify({ game: 'minesweeper', won, time, level: currentLevel }));
+        }
+
+        // Запуск игры
+        startGame('easy');
+    </script>
+</body>
+</html>
