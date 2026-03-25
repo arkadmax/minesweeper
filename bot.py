@@ -1,4 +1,3 @@
-# pip install python-telegram-bot flask python-dotenv
 import os
 import json
 import asyncio
