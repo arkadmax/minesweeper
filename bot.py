@@ -26,23 +26,31 @@ flask_app = Flask(__name__)
 app = Application.builder().token(BOT_TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /start - показывает кнопку запуска игры"""
+ """Команда /start - показывает кнопку запуска игры"""
     
-    keyboard = [
-        [KeyboardButton(
-            text="🎮 Играть в Сапера",
-            web_app=WebAppInfo(url=WEB_APP_URL)
-        )]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+ keyboard = [
+ [KeyboardButton(
+ text="🎮 Играть в Сапера",
+ web_app=WebAppInfo(url=WEB_APP_URL)
+ )]
+ ]
+ reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    await update.message.reply_text(
-        "💣 <b>Сапер</b>\n\n"
-        "Классическая игра в сапера!\n\n"
-        "Нажмите кнопку ниже, чтобы начать играть:",
-        reply_markup=reply_markup,
-        parse_mode='HTML'
-    )
+ await update.message.reply_text(
+ "💣<b>Сапер</b>\n\n"
+ "Классическая игра в сапера!\n\n"
+ "Нажмите кнопку ниже, чтобы начать играть:",
+ reply_markup=reply_markup,
+ parse_mode='HTML'
+ )
+
+async def url_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+ """Показывает URL игры"""
+ await update.message.reply_text(
+ f"URL игры:\n<code>{WEB_APP_URL}</code>\n\n"
+ f"WEBHOOK_URL:\n<code>{WEBHOOK_URL or 'не задан'}</code>",
+ parse_mode='HTML'
+ )
 
 async def webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка данных из Mini App"""
@@ -61,6 +69,7 @@ async def webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Обработчики
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("url", url_command))
 
 # Фильтр для web_app_data
 async def webapp_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
